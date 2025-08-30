@@ -52,9 +52,10 @@ type SheetDiff struct {
 
 // FieldInfo represents basic field information
 type FieldInfo struct {
-	Name   string
-	Type   string
-	Format string
+	Name     string
+	Type     string
+	Format   string
+	Position int // Position in schema for ordering
 }
 
 // FormatDiff formats the diff result for display
@@ -109,8 +110,10 @@ func CompareFields(currentFields, schemaFields []FieldInfo) *SheetDiff {
 	}
 
 	// Find fields to add (in schema but not in sheet)
+	// Preserve the position information from schema
 	for _, schemaField := range schemaFields {
 		if _, exists := currentMap[schemaField.Name]; !exists {
+			// Keep the position from the schema for ordering
 			diff.FieldsToAdd = append(diff.FieldsToAdd, schemaField)
 		}
 	}
@@ -158,12 +161,27 @@ func ConvertDiffToResult(diff *SheetDiff, sheetName string) *DiffResult {
 		HasChanges: false,
 	}
 
-	// Add field additions
-	for _, field := range diff.FieldsToAdd {
+	// Sort fields to add by position to maintain schema order
+	sortedFieldsToAdd := make([]FieldInfo, len(diff.FieldsToAdd))
+	copy(sortedFieldsToAdd, diff.FieldsToAdd)
+	for i := 0; i < len(sortedFieldsToAdd)-1; i++ {
+		for j := i + 1; j < len(sortedFieldsToAdd); j++ {
+			if sortedFieldsToAdd[i].Position > sortedFieldsToAdd[j].Position {
+				sortedFieldsToAdd[i], sortedFieldsToAdd[j] = sortedFieldsToAdd[j], sortedFieldsToAdd[i]
+			}
+		}
+	}
+
+	// Add field additions in schema order
+	for _, field := range sortedFieldsToAdd {
+		positionInfo := ""
+		if field.Position >= 0 {
+			positionInfo = fmt.Sprintf(" at position %d", field.Position+1)
+		}
 		result.Changes = append(result.Changes, Change{
 			Type:        ChangeTypeAdd,
 			Path:        fmt.Sprintf("%s.%s", sheetName, field.Name),
-			Description: fmt.Sprintf("Add new field '%s' of type %s", field.Name, formatFieldType(field.Type, field.Format)),
+			Description: fmt.Sprintf("Add new field '%s' of type %s%s", field.Name, formatFieldType(field.Type, field.Format), positionInfo),
 			NewValue:    field,
 		})
 		result.HasChanges = true

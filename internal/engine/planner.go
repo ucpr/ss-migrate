@@ -96,14 +96,15 @@ func (p *Planner) analyzeSheet(ctx context.Context, spreadsheetID, sheetName str
 	return fields, nil
 }
 
-// convertSchemaFields converts schema fields to FieldInfo
+// convertSchemaFields converts schema fields to FieldInfo with position information
 func convertSchemaFields(fields []schema.Field) []FieldInfo {
 	result := []FieldInfo{}
-	for _, field := range fields {
+	for i, field := range fields {
 		info := FieldInfo{
-			Name:   field.Name,
-			Type:   field.Type,
-			Format: field.Format,
+			Name:     field.Name,
+			Type:     field.Type,
+			Format:   field.Format,
+			Position: i, // Store the position in the schema
 		}
 		result = append(result, info)
 	}
