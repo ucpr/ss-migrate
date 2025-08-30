@@ -10,18 +10,8 @@ import (
 func main() {
 	c := cli.New("ss-migrate", "v0.0.1")
 
-	// Register example commands
-	c.RegisterCommand("migrate", func(args []string) error {
-		fmt.Println("Running migration...")
-		// TODO: Implement actual migration logic
-		return nil
-	})
-
-	c.RegisterCommand("rollback", func(args []string) error {
-		fmt.Println("Rolling back...")
-		// TODO: Implement actual rollback logic
-		return nil
-	})
+	// Register commands
+	c.RegisterCommand("init", initCommand)
 
 	if err := c.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
