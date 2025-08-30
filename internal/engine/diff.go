@@ -216,61 +216,116 @@ func formatFieldType(fieldType, format string) string {
 
 // ConvertDiffToResult converts a SheetDiff to a DiffResult
 func ConvertDiffToResult(diff *SheetDiff, sheetName string) *DiffResult {
+	return ConvertDiffToResultWithOrder(diff, sheetName, nil)
+}
+
+// ConvertDiffToResultWithOrder converts a SheetDiff to a DiffResult with optional field ordering
+func ConvertDiffToResultWithOrder(diff *SheetDiff, sheetName string, schemaFields []FieldInfo) *DiffResult {
 	result := &DiffResult{
 		Changes:    []Change{},
 		HasChanges: false,
 	}
 
-	// Sort fields to add by position to maintain schema order
-	sortedFieldsToAdd := make([]FieldInfo, len(diff.FieldsToAdd))
-	copy(sortedFieldsToAdd, diff.FieldsToAdd)
-	for i := 0; i < len(sortedFieldsToAdd)-1; i++ {
-		for j := i + 1; j < len(sortedFieldsToAdd); j++ {
-			if sortedFieldsToAdd[i].Position > sortedFieldsToAdd[j].Position {
-				sortedFieldsToAdd[i], sortedFieldsToAdd[j] = sortedFieldsToAdd[j], sortedFieldsToAdd[i]
-			}
-		}
-	}
-
-	// Add field additions in schema order
-	for _, field := range sortedFieldsToAdd {
+	// Create a map to store all changes by field name
+	changesByField := make(map[string][]Change)
+	
+	// Collect all field additions
+	for _, field := range diff.FieldsToAdd {
 		positionInfo := ""
 		if field.Position >= 0 {
 			positionInfo = fmt.Sprintf(" at position %d", field.Position+1)
 		}
-		result.Changes = append(result.Changes, Change{
+		change := Change{
 			Type:        ChangeTypeAdd,
 			Path:        fmt.Sprintf("%s.%s", sheetName, field.Name),
 			Description: fmt.Sprintf("Add new field '%s' of type %s%s", field.Name, formatFieldType(field.Type, field.Format), positionInfo),
 			NewValue:    field,
-		})
+		}
+		changesByField[field.Name] = append(changesByField[field.Name], change)
 		result.HasChanges = true
 	}
 
-	// Add field removals
+	// Collect all field removals
 	for _, field := range diff.FieldsToRemove {
-		result.Changes = append(result.Changes, Change{
+		change := Change{
 			Type:        ChangeTypeRemove,
 			Path:        fmt.Sprintf("%s.%s", sheetName, field.Name),
 			Description: fmt.Sprintf("Remove field '%s'", field.Name),
 			OldValue:    field,
-		})
+		}
+		changesByField[field.Name] = append(changesByField[field.Name], change)
 		result.HasChanges = true
 	}
 
-	// Add field modifications
+	// Collect all field modifications
 	for _, field := range diff.FieldsToModify {
-		result.Changes = append(result.Changes, Change{
+		change := Change{
 			Type:        ChangeTypeModify,
 			Path:        fmt.Sprintf("%s.%s", sheetName, field.Name),
 			Description: field.Description,
 			OldValue:    field, // Pass the entire FieldDiff object
 			NewValue:    field, // Pass the entire FieldDiff object
-		})
+		}
+		changesByField[field.Name] = append(changesByField[field.Name], change)
 		result.HasChanges = true
 	}
 
-	// Add field reordering if needed
+	// If schemaFields is provided, output changes in schema field order
+	if schemaFields != nil && len(schemaFields) > 0 {
+		// First add changes for fields in schema order
+		for _, schemaField := range schemaFields {
+			if changes, exists := changesByField[schemaField.Name]; exists {
+				result.Changes = append(result.Changes, changes...)
+				delete(changesByField, schemaField.Name)
+			}
+		}
+		// Then add any remaining changes (fields being removed that aren't in schema)
+		for _, changes := range changesByField {
+			result.Changes = append(result.Changes, changes...)
+		}
+	} else {
+		// No schema field order provided, use original logic
+		// First add additions (sorted by position)
+		sortedFieldsToAdd := make([]FieldInfo, len(diff.FieldsToAdd))
+		copy(sortedFieldsToAdd, diff.FieldsToAdd)
+		for i := 0; i < len(sortedFieldsToAdd)-1; i++ {
+			for j := i + 1; j < len(sortedFieldsToAdd); j++ {
+				if sortedFieldsToAdd[i].Position > sortedFieldsToAdd[j].Position {
+					sortedFieldsToAdd[i], sortedFieldsToAdd[j] = sortedFieldsToAdd[j], sortedFieldsToAdd[i]
+				}
+			}
+		}
+		for _, field := range sortedFieldsToAdd {
+			if changes, exists := changesByField[field.Name]; exists {
+				for _, change := range changes {
+					if change.Type == ChangeTypeAdd {
+						result.Changes = append(result.Changes, change)
+					}
+				}
+			}
+		}
+		// Then add removals and modifications
+		for _, field := range diff.FieldsToRemove {
+			if changes, exists := changesByField[field.Name]; exists {
+				for _, change := range changes {
+					if change.Type == ChangeTypeRemove {
+						result.Changes = append(result.Changes, change)
+					}
+				}
+			}
+		}
+		for _, field := range diff.FieldsToModify {
+			if changes, exists := changesByField[field.Name]; exists {
+				for _, change := range changes {
+					if change.Type == ChangeTypeModify {
+						result.Changes = append(result.Changes, change)
+					}
+				}
+			}
+		}
+	}
+
+	// Add field reordering if needed (always at the end)
 	if diff.FieldsToReorder {
 		result.Changes = append(result.Changes, Change{
 			Type:        ChangeTypeReorder,

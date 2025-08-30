@@ -48,8 +48,8 @@ func (p *Planner) Plan(ctx context.Context, schemaConfig *schema.Schema) (*DiffR
 	diff := CompareFields(currentFields, schemaFields)
 	diff.SheetName = resource.Name
 
-	// Convert to result
-	result := ConvertDiffToResult(diff, resource.Name)
+	// Convert to result with schema field order
+	result := ConvertDiffToResultWithOrder(diff, resource.Name, schemaFields)
 
 	return result, nil
 }
@@ -137,8 +137,8 @@ func (p *Planner) PlanAll(ctx context.Context, schemaConfig *schema.Schema) ([]*
 		diff := CompareFields(currentFields, schemaFields)
 		diff.SheetName = resource.Name
 
-		// Convert to result
-		result := ConvertDiffToResult(diff, resource.Name)
+		// Convert to result with schema field order
+		result := ConvertDiffToResultWithOrder(diff, resource.Name, schemaFields)
 		results = append(results, result)
 	}
 
