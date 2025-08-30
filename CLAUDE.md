@@ -71,6 +71,9 @@ resources:
         x-protect: true  # Protect column from edits
       - name: "Name"
         type: "string"
+      - name: "InternalNotes"
+        type: "string"
+        x-hidden: true   # Hide column in spreadsheet
 ```
 
 ## Authentication
@@ -84,4 +87,6 @@ The tool uses Google Application Default Credentials (ADC). Set up authenticatio
 - Field ordering is preserved based on schema definition
 - Type inference from existing data when analyzing sheets
 - Column insertion maintains proper positioning
+- Column deletion removes entire columns (all rows)
+- Column visibility can be controlled via `x-hidden` field property
 - Batch operations for performance when updating multiple columns

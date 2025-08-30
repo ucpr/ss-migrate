@@ -104,6 +104,7 @@ func convertSchemaFields(fields []schema.Field) []FieldInfo {
 			Name:     field.Name,
 			Type:     field.Type,
 			Format:   field.Format,
+			Hidden:   field.Hidden,
 			Position: i, // Store the position in the schema
 		}
 		result = append(result, info)

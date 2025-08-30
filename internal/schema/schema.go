@@ -24,6 +24,7 @@ type Field struct {
 	Type    string `yaml:"type"`
 	Format  string `yaml:"format"`
 	Protect bool   `yaml:"x-protect"`
+	Hidden  bool   `yaml:"x-hidden"`
 }
 
 func ParseYAML(data []byte) (*Schema, error) {

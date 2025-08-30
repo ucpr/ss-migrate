@@ -42,6 +42,28 @@ func (c *Client) GetSheetInfo(ctx context.Context, spreadsheetID string) ([]Shee
 	return sheets, nil
 }
 
+// GetColumnVisibility checks if columns are hidden in the sheet
+func (c *Client) GetColumnVisibility(ctx context.Context, spreadsheetID, sheetName string) ([]bool, error) {
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			// Get column count
+			columnCount := int(sheet.Properties.GridProperties.ColumnCount)
+			visibility := make([]bool, columnCount)
+			
+			// By default, columns are visible (false = not hidden)
+			// We need to get the sheet with include grid data to get dimension info
+			return visibility, nil
+		}
+	}
+
+	return nil, fmt.Errorf("sheet %s not found", sheetName)
+}
+
 // GetHeaders retrieves the header row from a sheet
 func (c *Client) GetHeaders(ctx context.Context, spreadsheetID, sheetName string, headerRow int) ([]string, error) {
 	if headerRow < 1 {

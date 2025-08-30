@@ -39,6 +39,8 @@ type FieldDiff struct {
 	NewType     string
 	OldFormat   string
 	NewFormat   string
+	OldHidden   bool
+	NewHidden   bool
 	Description string
 }
 
@@ -55,6 +57,7 @@ type FieldInfo struct {
 	Name     string
 	Type     string
 	Format   string
+	Hidden   bool
 	Position int // Position in schema for ordering
 }
 
@@ -128,18 +131,41 @@ func CompareFields(currentFields, schemaFields []FieldInfo) *SheetDiff {
 	// Find fields to modify (exist in both but different)
 	for _, schemaField := range schemaFields {
 		if currentField, exists := currentMap[schemaField.Name]; exists {
+			hasChanges := false
+			fieldDiff := FieldDiff{
+				Name:      schemaField.Name,
+				Type:      ChangeTypeModify,
+				OldType:   currentField.Type,
+				NewType:   schemaField.Type,
+				OldFormat: currentField.Format,
+				NewFormat: schemaField.Format,
+				OldHidden: currentField.Hidden,
+				NewHidden: schemaField.Hidden,
+			}
+			
+			var changes []string
+			
+			// Check for type/format changes
 			if currentField.Type != schemaField.Type || currentField.Format != schemaField.Format {
-				diff.FieldsToModify = append(diff.FieldsToModify, FieldDiff{
-					Name:      schemaField.Name,
-					Type:      ChangeTypeModify,
-					OldType:   currentField.Type,
-					NewType:   schemaField.Type,
-					OldFormat: currentField.Format,
-					NewFormat: schemaField.Format,
-					Description: fmt.Sprintf("Type change from %s to %s", 
-						formatFieldType(currentField.Type, currentField.Format),
-						formatFieldType(schemaField.Type, schemaField.Format)),
-				})
+				hasChanges = true
+				changes = append(changes, fmt.Sprintf("type from %s to %s",
+					formatFieldType(currentField.Type, currentField.Format),
+					formatFieldType(schemaField.Type, schemaField.Format)))
+			}
+			
+			// Check for hidden status changes
+			if currentField.Hidden != schemaField.Hidden {
+				hasChanges = true
+				if schemaField.Hidden {
+					changes = append(changes, "hide column")
+				} else {
+					changes = append(changes, "show column")
+				}
+			}
+			
+			if hasChanges {
+				fieldDiff.Description = strings.Join(changes, ", ")
+				diff.FieldsToModify = append(diff.FieldsToModify, fieldDiff)
 			}
 		}
 	}
@@ -204,8 +230,8 @@ func ConvertDiffToResult(diff *SheetDiff, sheetName string) *DiffResult {
 			Type:        ChangeTypeModify,
 			Path:        fmt.Sprintf("%s.%s", sheetName, field.Name),
 			Description: field.Description,
-			OldValue:    fmt.Sprintf("%s(%s)", field.OldType, field.OldFormat),
-			NewValue:    fmt.Sprintf("%s(%s)", field.NewType, field.NewFormat),
+			OldValue:    field, // Pass the entire FieldDiff object
+			NewValue:    field, // Pass the entire FieldDiff object
 		})
 		result.HasChanges = true
 	}

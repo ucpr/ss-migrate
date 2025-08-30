@@ -108,10 +108,7 @@ func (a *Applier) applyChange(ctx context.Context, schemaConfig *schema.Schema, 
 	case ChangeTypeRemove:
 		return a.removeField(ctx, spreadsheetID, sheetName, change, resource.HeaderRow)
 	case ChangeTypeModify:
-		// For now, we'll log modify changes but not actually change data types
-		// as this could cause data loss
-		fmt.Printf("Warning: Field type modification for %s requires manual intervention\n", change.Path)
-		return nil
+		return a.modifyField(ctx, spreadsheetID, sheetName, change, resource.HeaderRow)
 	default:
 		return fmt.Errorf("unsupported change type: %s", change.Type)
 	}
@@ -200,7 +197,17 @@ func (a *Applier) addField(ctx context.Context, spreadsheetID, sheetName string,
 		return fmt.Errorf("failed to add field header: %w", err)
 	}
 
-	fmt.Printf("Added field '%s' to column %s\n", fieldInfo.Name, columnLetter)
+	// If the field should be hidden, hide the column
+	if fieldInfo.Hidden {
+		err = a.sheetClient.HideColumn(ctx, spreadsheetID, sheetName, insertColumnIndex)
+		if err != nil {
+			return fmt.Errorf("failed to hide column: %w", err)
+		}
+		fmt.Printf("Added field '%s' to column %s (hidden)\n", fieldInfo.Name, columnLetter)
+	} else {
+		fmt.Printf("Added field '%s' to column %s\n", fieldInfo.Name, columnLetter)
+	}
+	
 	return nil
 }
 
@@ -243,6 +250,66 @@ func (a *Applier) removeField(ctx context.Context, spreadsheetID, sheetName stri
 	}
 
 	fmt.Printf("Deleted column %s with field '%s' (all rows removed)\n", columnLetter, fieldInfo.Name)
+	return nil
+}
+
+// modifyField modifies field properties including visibility
+func (a *Applier) modifyField(ctx context.Context, spreadsheetID, sheetName string, change Change, headerRow int) error {
+	if headerRow == 0 {
+		headerRow = 1
+	}
+
+	// Get current headers to find column index
+	headers, err := a.sheetClient.GetHeaders(ctx, spreadsheetID, sheetName, headerRow)
+	if err != nil {
+		return fmt.Errorf("failed to get headers: %w", err)
+	}
+
+	// Find the field diff from the change
+	fieldDiff, ok := change.NewValue.(FieldDiff)
+	if !ok {
+		return fmt.Errorf("invalid field diff in change")
+	}
+
+	// Find the column index
+	columnIndex := -1
+	for i, header := range headers {
+		if header == fieldDiff.Name {
+			columnIndex = i
+			break
+		}
+	}
+
+	if columnIndex == -1 {
+		return fmt.Errorf("field %s not found", fieldDiff.Name)
+	}
+
+	// Handle hidden status changes
+	if fieldDiff.OldHidden != fieldDiff.NewHidden {
+		columnLetter := sheet.ColumnToLetter(columnIndex)
+		if fieldDiff.NewHidden {
+			err = a.sheetClient.HideColumn(ctx, spreadsheetID, sheetName, columnIndex)
+			if err != nil {
+				return fmt.Errorf("failed to hide column: %w", err)
+			}
+			fmt.Printf("Hidden column %s with field '%s'\n", columnLetter, fieldDiff.Name)
+		} else {
+			err = a.sheetClient.ShowColumn(ctx, spreadsheetID, sheetName, columnIndex)
+			if err != nil {
+				return fmt.Errorf("failed to show column: %w", err)
+			}
+			fmt.Printf("Shown column %s with field '%s'\n", columnLetter, fieldDiff.Name)
+		}
+	}
+
+	// Handle type changes (with warning)
+	if fieldDiff.OldType != fieldDiff.NewType || fieldDiff.OldFormat != fieldDiff.NewFormat {
+		fmt.Printf("Warning: Field type modification for %s requires manual intervention (from %s to %s)\n",
+			fieldDiff.Name,
+			formatFieldType(fieldDiff.OldType, fieldDiff.OldFormat),
+			formatFieldType(fieldDiff.NewType, fieldDiff.NewFormat))
+	}
+
 	return nil
 }
 

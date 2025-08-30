@@ -211,6 +211,102 @@ func (c *Client) DeleteColumn(ctx context.Context, spreadsheetID, sheetName stri
 	return nil
 }
 
+// HideColumn hides a column at the specified index
+func (c *Client) HideColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
+	// Get sheet ID
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	var sheetID int64 = -1
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			sheetID = sheet.Properties.SheetId
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		return fmt.Errorf("sheet %s not found", sheetName)
+	}
+
+	// Create update dimension properties request to hide the column
+	req := &sheets.Request{
+		UpdateDimensionProperties: &sheets.UpdateDimensionPropertiesRequest{
+			Range: &sheets.DimensionRange{
+				SheetId:    sheetID,
+				Dimension:  "COLUMNS",
+				StartIndex: int64(columnIndex),
+				EndIndex:   int64(columnIndex + 1),
+			},
+			Properties: &sheets.DimensionProperties{
+				HiddenByUser: true,
+			},
+			Fields: "hiddenByUser",
+		},
+	}
+
+	batchUpdateReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err = c.Service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to hide column: %w", err)
+	}
+
+	return nil
+}
+
+// ShowColumn shows a hidden column at the specified index
+func (c *Client) ShowColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
+	// Get sheet ID
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	var sheetID int64 = -1
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			sheetID = sheet.Properties.SheetId
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		return fmt.Errorf("sheet %s not found", sheetName)
+	}
+
+	// Create update dimension properties request to show the column
+	req := &sheets.Request{
+		UpdateDimensionProperties: &sheets.UpdateDimensionPropertiesRequest{
+			Range: &sheets.DimensionRange{
+				SheetId:    sheetID,
+				Dimension:  "COLUMNS",
+				StartIndex: int64(columnIndex),
+				EndIndex:   int64(columnIndex + 1),
+			},
+			Properties: &sheets.DimensionProperties{
+				HiddenByUser: false,
+			},
+			Fields: "hiddenByUser",
+		},
+	}
+
+	batchUpdateReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err = c.Service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to show column: %w", err)
+	}
+
+	return nil
+}
+
 // InsertColumn inserts a new column at the specified index
 func (c *Client) InsertColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
 	// Get sheet ID

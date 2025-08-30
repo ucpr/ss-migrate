@@ -20,6 +20,10 @@ const DefaultSchemaTemplate = `resources:
       - name: created_at
         type: datetime
         format: default
+      - name: internal_notes
+        type: string
+        # optional: set to true to hide this column in the spreadsheet
+        x-hidden: true
 `
 
 func GetDefaultSchemaBytes() []byte {
