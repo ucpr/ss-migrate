@@ -204,7 +204,7 @@ func (a *Applier) addField(ctx context.Context, spreadsheetID, sheetName string,
 	return nil
 }
 
-// removeField removes a field from the sheet
+// removeField removes a field from the sheet by deleting the entire column
 func (a *Applier) removeField(ctx context.Context, spreadsheetID, sheetName string, change Change, headerRow int) error {
 	if headerRow == 0 {
 		headerRow = 1
@@ -235,17 +235,14 @@ func (a *Applier) removeField(ctx context.Context, spreadsheetID, sheetName stri
 		return fmt.Errorf("field %s not found", fieldInfo.Name)
 	}
 
-	// For safety, we'll just clear the header instead of deleting the entire column
-	// This preserves data in case of mistakes
+	// Delete the entire column (all rows)
 	columnLetter := sheet.ColumnToLetter(columnIndex)
-	cellRange := fmt.Sprintf("%s!%s%d", sheetName, columnLetter, headerRow)
-
-	err = a.sheetClient.ClearValues(ctx, spreadsheetID, cellRange)
+	err = a.sheetClient.DeleteColumn(ctx, spreadsheetID, sheetName, columnIndex)
 	if err != nil {
-		return fmt.Errorf("failed to clear field header: %w", err)
+		return fmt.Errorf("failed to delete column: %w", err)
 	}
 
-	fmt.Printf("Cleared header for field '%s' in column %s (data preserved)\n", fieldInfo.Name, columnLetter)
+	fmt.Printf("Deleted column %s with field '%s' (all rows removed)\n", columnLetter, fieldInfo.Name)
 	return nil
 }
 

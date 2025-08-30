@@ -167,6 +167,50 @@ func (c *Client) CheckSheetExists(ctx context.Context, spreadsheetID, sheetName 
 	return false, nil
 }
 
+// DeleteColumn deletes a column at the specified index
+func (c *Client) DeleteColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
+	// Get sheet ID
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	var sheetID int64 = -1
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			sheetID = sheet.Properties.SheetId
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		return fmt.Errorf("sheet %s not found", sheetName)
+	}
+
+	// Create delete dimension request
+	req := &sheets.Request{
+		DeleteDimension: &sheets.DeleteDimensionRequest{
+			Range: &sheets.DimensionRange{
+				SheetId:    sheetID,
+				Dimension:  "COLUMNS",
+				StartIndex: int64(columnIndex),
+				EndIndex:   int64(columnIndex + 1),
+			},
+		},
+	}
+
+	batchUpdateReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err = c.Service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to delete column: %w", err)
+	}
+
+	return nil
+}
+
 // InsertColumn inserts a new column at the specified index
 func (c *Client) InsertColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
 	// Get sheet ID
