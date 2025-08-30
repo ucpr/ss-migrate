@@ -5,6 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/ucpr/ss-migrate/internal/schema"
 )
 
 func TestInitCommand(t *testing.T) {
@@ -25,7 +27,7 @@ func TestInitCommand(t *testing.T) {
 		t.Fatalf("failed to read schema file: %v", err)
 	}
 
-	expected := getDefaultSchema()
+	expected := schema.GetDefaultSchemaBytes()
 	if !bytes.Equal(data, expected) {
 		t.Errorf("schema content does not match default schema\ngot:\n%s\nwant:\n%s", data, expected)
 	}
