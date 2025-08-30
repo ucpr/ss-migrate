@@ -6,14 +6,14 @@ import (
 )
 
 func TestNewCLI(t *testing.T) {
-	cli := New()
+	cli := New("cmd", "1.0.0")
 	if cli == nil {
 		t.Error("expected CLI instance, got nil")
 	}
 }
 
 func TestRun(t *testing.T) {
-	cli := New()
+	cli := New("cmd", "1.0.0")
 	err := cli.Run([]string{"cmd"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
@@ -22,13 +22,13 @@ func TestRun(t *testing.T) {
 
 func TestFlagParsing(t *testing.T) {
 	var output bytes.Buffer
-	cli := NewWithOutput(&output)
-	
+	cli := New("cmd", "1.0.0", WithOutput(&output))
+
 	err := cli.Run([]string{"cmd", "-version"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	
+
 	if output.String() == "" {
 		t.Error("expected version output, got empty string")
 	}
@@ -36,19 +36,19 @@ func TestFlagParsing(t *testing.T) {
 
 func TestSubcommand(t *testing.T) {
 	var output bytes.Buffer
-	cli := NewWithOutput(&output)
-	
+	cli := New("cmd", "1.0.0", WithOutput(&output))
+
 	// Register a test subcommand
 	cli.RegisterCommand("test", func(args []string) error {
 		output.WriteString("test command executed")
 		return nil
 	})
-	
+
 	err := cli.Run([]string{"cmd", "test"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	
+
 	expected := "test command executed"
 	if output.String() != expected {
 		t.Errorf("expected %q, got %q", expected, output.String())
@@ -57,21 +57,21 @@ func TestSubcommand(t *testing.T) {
 
 func TestHelpFlag(t *testing.T) {
 	var output bytes.Buffer
-	cli := NewWithOutput(&output)
-	
+	cli := New("cmd", "1.0.0", WithOutput(&output))
+
 	cli.RegisterCommand("migrate", func(args []string) error {
 		return nil
 	})
-	
+
 	err := cli.Run([]string{"cmd", "-help"})
 	if err != nil {
 		t.Errorf("expected no error, got %v", err)
 	}
-	
+
 	if !bytes.Contains(output.Bytes(), []byte("Usage:")) {
 		t.Error("expected help text to contain 'Usage:'")
 	}
-	
+
 	if !bytes.Contains(output.Bytes(), []byte("migrate")) {
 		t.Error("expected help text to list 'migrate' command")
 	}

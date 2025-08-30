@@ -8,25 +8,39 @@ import (
 	"strings"
 )
 
-type CommandFunc func(args []string) error
+type (
+	// CommandFunc defines the signature for command functions.
+	CommandFunc func(args []string) error
+	// Option for configuring the CLI.
+	Option func(*CLI)
+)
+
+// WithOutput sets the output writer for the CLI.
+func WithOutput(w io.Writer) Option {
+	return func(c *CLI) {
+		c.output = w
+	}
+}
 
 type CLI struct {
-	output   io.Writer
-	commands map[string]CommandFunc
+	serviceName string
+	version     string
+	output      io.Writer
+	commands    map[string]CommandFunc
 }
 
-func New() *CLI {
-	return &CLI{
-		output:   os.Stdout,
-		commands: make(map[string]CommandFunc),
+func New(serviceName, version string, opts ...Option) *CLI {
+	c := &CLI{
+		serviceName: serviceName,
+		version:     version,
+		output:      os.Stdout,
+		commands:    make(map[string]CommandFunc),
 	}
-}
+	for _, opt := range opts {
+		opt(c)
+	}
 
-func NewWithOutput(output io.Writer) *CLI {
-	return &CLI{
-		output:   output,
-		commands: make(map[string]CommandFunc),
-	}
+	return c
 }
 
 func (c *CLI) RegisterCommand(name string, fn CommandFunc) {
@@ -67,7 +81,7 @@ func (c *CLI) Run(args []string) error {
 	}
 
 	if *version {
-		fmt.Fprintln(c.output, "ss-migrate version 0.1.0")
+		fmt.Fprintf(c.output, "%s version %s\n", c.serviceName, c.version)
 		return nil
 	}
 
@@ -75,7 +89,7 @@ func (c *CLI) Run(args []string) error {
 }
 
 func (c *CLI) showHelp() {
-	fmt.Fprintln(c.output, "Usage: ss-migrate [OPTIONS] COMMAND [ARGS...]")
+	fmt.Fprintf(c.output, "Usage: %s [OPTIONS] COMMAND [ARGS...]\n", c.serviceName)
 	fmt.Fprintln(c.output, "")
 	fmt.Fprintln(c.output, "Options:")
 	fmt.Fprintln(c.output, "  -help       Show this help message")
@@ -86,4 +100,3 @@ func (c *CLI) showHelp() {
 		fmt.Fprintf(c.output, "  %s\n", name)
 	}
 }
-
