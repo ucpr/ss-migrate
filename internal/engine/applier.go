@@ -109,6 +109,8 @@ func (a *Applier) applyChange(ctx context.Context, schemaConfig *schema.Schema, 
 		return a.removeField(ctx, spreadsheetID, sheetName, change, resource.HeaderRow)
 	case ChangeTypeModify:
 		return a.modifyField(ctx, spreadsheetID, sheetName, change, resource.HeaderRow)
+	case ChangeTypeReorder:
+		return a.reorderFields(ctx, spreadsheetID, sheetName, change, resource.HeaderRow)
 	default:
 		return fmt.Errorf("unsupported change type: %s", change.Type)
 	}
@@ -310,6 +312,77 @@ func (a *Applier) modifyField(ctx context.Context, spreadsheetID, sheetName stri
 			formatFieldType(fieldDiff.NewType, fieldDiff.NewFormat))
 	}
 
+	return nil
+}
+
+// reorderFields reorders columns to match the schema order
+func (a *Applier) reorderFields(ctx context.Context, spreadsheetID, sheetName string, change Change, headerRow int) error {
+	if headerRow == 0 {
+		headerRow = 1
+	}
+
+	// Get current headers
+	currentHeaders, err := a.sheetClient.GetHeaders(ctx, spreadsheetID, sheetName, headerRow)
+	if err != nil {
+		return fmt.Errorf("failed to get headers: %w", err)
+	}
+
+	// Get expected order from change
+	expectedOrder, ok := change.NewValue.([]string)
+	if !ok {
+		return fmt.Errorf("invalid expected order in change")
+	}
+
+	// Create a map of current positions
+	currentPositions := make(map[string]int)
+	for i, header := range currentHeaders {
+		currentPositions[header] = i
+	}
+
+	// Reorder columns to match expected order
+	// We'll use a simple approach: for each expected field, move it to its correct position
+	for targetIndex, fieldName := range expectedOrder {
+		currentIndex, exists := currentPositions[fieldName]
+		if !exists {
+			// Field doesn't exist in current headers, skip
+			continue
+		}
+
+		if currentIndex != targetIndex {
+			// Need to move this column
+			err = a.sheetClient.MoveColumn(ctx, spreadsheetID, sheetName, currentIndex, targetIndex)
+			if err != nil {
+				return fmt.Errorf("failed to move column %s from %d to %d: %w", 
+					fieldName, currentIndex, targetIndex, err)
+			}
+
+			// Update positions after the move
+			// When we move a column, we need to update our tracking
+			if currentIndex < targetIndex {
+				// Moving right: columns between source and destination shift left
+				for name, pos := range currentPositions {
+					if pos > currentIndex && pos <= targetIndex {
+						currentPositions[name] = pos - 1
+					}
+				}
+			} else {
+				// Moving left: columns between destination and source shift right
+				for name, pos := range currentPositions {
+					if pos >= targetIndex && pos < currentIndex {
+						currentPositions[name] = pos + 1
+					}
+				}
+			}
+			currentPositions[fieldName] = targetIndex
+			
+			fmt.Printf("Moved field '%s' from column %s to %s\n", 
+				fieldName, 
+				sheet.ColumnToLetter(currentIndex),
+				sheet.ColumnToLetter(targetIndex))
+		}
+	}
+
+	fmt.Printf("Fields reordered to match schema\n")
 	return nil
 }
 

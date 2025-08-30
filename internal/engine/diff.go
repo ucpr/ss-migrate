@@ -9,10 +9,11 @@ import (
 type ChangeType string
 
 const (
-	ChangeTypeAdd    ChangeType = "ADD"
-	ChangeTypeRemove ChangeType = "REMOVE"
-	ChangeTypeModify ChangeType = "MODIFY"
-	ChangeTypeNone   ChangeType = "NONE"
+	ChangeTypeAdd     ChangeType = "ADD"
+	ChangeTypeRemove  ChangeType = "REMOVE"
+	ChangeTypeModify  ChangeType = "MODIFY"
+	ChangeTypeReorder ChangeType = "REORDER"
+	ChangeTypeNone    ChangeType = "NONE"
 )
 
 // Change represents a single change detected between schemas
@@ -46,10 +47,12 @@ type FieldDiff struct {
 
 // SheetDiff represents differences in sheet structure
 type SheetDiff struct {
-	SheetName      string
-	FieldsToAdd    []FieldInfo
-	FieldsToRemove []FieldInfo
-	FieldsToModify []FieldDiff
+	SheetName       string
+	FieldsToAdd     []FieldInfo
+	FieldsToRemove  []FieldInfo
+	FieldsToModify  []FieldDiff
+	FieldsToReorder bool     // Indicates if fields need reordering
+	ExpectedOrder   []string // Expected field order from schema
 }
 
 // FieldInfo represents basic field information
@@ -88,6 +91,8 @@ func formatChange(c Change) string {
 		return fmt.Sprintf("  - %s: %s", c.Path, c.Description)
 	case ChangeTypeModify:
 		return fmt.Sprintf("  ~ %s: %s", c.Path, c.Description)
+	case ChangeTypeReorder:
+		return fmt.Sprintf("  ↔ %s: %s", c.Path, c.Description)
 	default:
 		return fmt.Sprintf("    %s: %s", c.Path, c.Description)
 	}
@@ -96,9 +101,11 @@ func formatChange(c Change) string {
 // CompareFields compares two sets of fields and returns the differences
 func CompareFields(currentFields, schemaFields []FieldInfo) *SheetDiff {
 	diff := &SheetDiff{
-		FieldsToAdd:    []FieldInfo{},
-		FieldsToRemove: []FieldInfo{},
-		FieldsToModify: []FieldDiff{},
+		FieldsToAdd:     []FieldInfo{},
+		FieldsToRemove:  []FieldInfo{},
+		FieldsToModify:  []FieldDiff{},
+		FieldsToReorder: false,
+		ExpectedOrder:   []string{},
 	}
 
 	// Create maps for easier lookup
@@ -170,6 +177,33 @@ func CompareFields(currentFields, schemaFields []FieldInfo) *SheetDiff {
 		}
 	}
 
+	// Check for field order changes
+	// Build expected order from schema (only fields that exist in current)
+	for _, schemaField := range schemaFields {
+		if _, exists := currentMap[schemaField.Name]; exists {
+			diff.ExpectedOrder = append(diff.ExpectedOrder, schemaField.Name)
+		}
+	}
+
+	// Build current order
+	currentOrder := []string{}
+	for _, field := range currentFields {
+		// Only include fields that are also in schema (ignore fields to be removed)
+		if _, exists := schemaMap[field.Name]; exists {
+			currentOrder = append(currentOrder, field.Name)
+		}
+	}
+
+	// Compare orders
+	if len(currentOrder) == len(diff.ExpectedOrder) {
+		for i := range currentOrder {
+			if currentOrder[i] != diff.ExpectedOrder[i] {
+				diff.FieldsToReorder = true
+				break
+			}
+		}
+	}
+
 	return diff
 }
 
@@ -236,6 +270,17 @@ func ConvertDiffToResult(diff *SheetDiff, sheetName string) *DiffResult {
 		result.HasChanges = true
 	}
 
+	// Add field reordering if needed
+	if diff.FieldsToReorder {
+		result.Changes = append(result.Changes, Change{
+			Type:        ChangeTypeReorder,
+			Path:        sheetName,
+			Description: fmt.Sprintf("Reorder fields to match schema: %s", strings.Join(diff.ExpectedOrder, ", ")),
+			NewValue:    diff.ExpectedOrder,
+		})
+		result.HasChanges = true
+	}
+
 	// Generate summary
 	result.Summary = generateSummary(diff, sheetName)
 
@@ -253,6 +298,9 @@ func generateSummary(diff *SheetDiff, sheetName string) string {
 	}
 	if len(diff.FieldsToModify) > 0 {
 		parts = append(parts, fmt.Sprintf("%d field(s) to modify", len(diff.FieldsToModify)))
+	}
+	if diff.FieldsToReorder {
+		parts = append(parts, "fields need reordering")
 	}
 
 	if len(parts) == 0 {

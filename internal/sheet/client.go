@@ -211,6 +211,51 @@ func (c *Client) DeleteColumn(ctx context.Context, spreadsheetID, sheetName stri
 	return nil
 }
 
+// MoveColumn moves a column from one position to another
+func (c *Client) MoveColumn(ctx context.Context, spreadsheetID, sheetName string, sourceIndex, destinationIndex int) error {
+	// Get sheet ID
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	var sheetID int64 = -1
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			sheetID = sheet.Properties.SheetId
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		return fmt.Errorf("sheet %s not found", sheetName)
+	}
+
+	// Create move dimension request
+	req := &sheets.Request{
+		MoveDimension: &sheets.MoveDimensionRequest{
+			Source: &sheets.DimensionRange{
+				SheetId:    sheetID,
+				Dimension:  "COLUMNS",
+				StartIndex: int64(sourceIndex),
+				EndIndex:   int64(sourceIndex + 1),
+			},
+			DestinationIndex: int64(destinationIndex),
+		},
+	}
+
+	batchUpdateReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err = c.Service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to move column: %w", err)
+	}
+
+	return nil
+}
+
 // HideColumn hides a column at the specified index
 func (c *Client) HideColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) error {
 	// Get sheet ID
