@@ -12,6 +12,7 @@ func main() {
 
 	// Register commands
 	c.RegisterCommand("init", initCommand)
+	c.RegisterCommand("plan", planCommand)
 
 	if err := c.Run(os.Args); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
