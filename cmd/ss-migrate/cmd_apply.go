@@ -17,18 +17,26 @@ func applyCommand(args []string) error {
 		return fmt.Errorf("usage: ss-migrate apply <schema-file-path> [--dry-run] [--yes]")
 	}
 
-	schemaPath := args[0]
+	var schemaPath string
 	dryRun := false
 	autoConfirm := false
 
-	// Parse flags
-	for _, arg := range args[1:] {
+	// Parse flags and find schema path
+	for _, arg := range args {
 		switch arg {
 		case "--dry-run":
 			dryRun = true
 		case "--yes", "-y":
 			autoConfirm = true
+		default:
+			if !strings.HasPrefix(arg, "-") && schemaPath == "" {
+				schemaPath = arg
+			}
 		}
+	}
+
+	if schemaPath == "" {
+		return fmt.Errorf("usage: ss-migrate apply <schema-file-path> [--dry-run] [--yes]")
 	}
 
 	// Load schema from file

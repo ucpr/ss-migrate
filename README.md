@@ -64,7 +64,10 @@ ss-migrate plan schema.yaml
 ss-migrate apply schema.yaml
 
 # Dry run (preview changes without applying)
-ss-migrate apply --dry-run schema.yaml
+ss-migrate apply schema.yaml --dry-run
+
+# Auto-confirm without prompting
+ss-migrate apply schema.yaml --yes
 ```
 
 ### Schema Format
