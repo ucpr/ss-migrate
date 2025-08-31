@@ -77,8 +77,17 @@ func (a *Applier) Apply(ctx context.Context, schemaConfig *schema.Schema, diff *
 func (a *Applier) applyChange(ctx context.Context, schemaConfig *schema.Schema, change Change) error {
 	// Parse the path to get sheet name and field name
 	parts := strings.Split(change.Path, ".")
-	if len(parts) < 2 {
-		return fmt.Errorf("invalid change path: %s", change.Path)
+	
+	// For REORDER changes, path is just the sheet name
+	if change.Type == ChangeTypeReorder {
+		if len(parts) < 1 {
+			return fmt.Errorf("invalid change path: %s", change.Path)
+		}
+	} else {
+		// For other changes, path should be "sheet.field"
+		if len(parts) < 2 {
+			return fmt.Errorf("invalid change path: %s", change.Path)
+		}
 	}
 
 	sheetName := parts[0]

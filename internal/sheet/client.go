@@ -231,6 +231,15 @@ func (c *Client) MoveColumn(ctx context.Context, spreadsheetID, sheetName string
 		return fmt.Errorf("sheet %s not found", sheetName)
 	}
 
+	// Adjust destination index based on Google Sheets API behavior:
+	// When moving a column to the right (sourceIndex < destinationIndex),
+	// the API expects the destination index to be one more than the visual position
+	// because the source column will be removed first.
+	adjustedDestination := destinationIndex
+	if sourceIndex < destinationIndex {
+		adjustedDestination = destinationIndex + 1
+	}
+
 	// Create move dimension request
 	req := &sheets.Request{
 		MoveDimension: &sheets.MoveDimensionRequest{
@@ -240,7 +249,7 @@ func (c *Client) MoveColumn(ctx context.Context, spreadsheetID, sheetName string
 				StartIndex: int64(sourceIndex),
 				EndIndex:   int64(sourceIndex + 1),
 			},
-			DestinationIndex: int64(destinationIndex),
+			DestinationIndex: int64(adjustedDestination),
 		},
 	}
 
