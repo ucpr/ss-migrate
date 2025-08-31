@@ -405,3 +405,121 @@ func (c *Client) InsertColumn(ctx context.Context, spreadsheetID, sheetName stri
 
 	return nil
 }
+
+// GetColumnFormat retrieves the number format pattern of a column
+func (c *Client) GetColumnFormat(ctx context.Context, spreadsheetID, sheetName string, columnIndex int) (string, error) {
+	// Get spreadsheet with cell format data
+	spreadsheet, err := c.Service.Spreadsheets.Get(spreadsheetID).
+		Ranges(fmt.Sprintf("%s!%s2:%s2", sheetName, ColumnToLetter(columnIndex), ColumnToLetter(columnIndex))).
+		IncludeGridData(true).
+		Context(ctx).
+		Do()
+	if err != nil {
+		return "", fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	// Find the sheet
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			// Check if we have grid data
+			if len(sheet.Data) > 0 && len(sheet.Data[0].RowData) > 0 && len(sheet.Data[0].RowData[0].Values) > 0 {
+				cellData := sheet.Data[0].RowData[0].Values[0]
+				if cellData.UserEnteredFormat != nil && cellData.UserEnteredFormat.NumberFormat != nil {
+					return cellData.UserEnteredFormat.NumberFormat.Pattern, nil
+				}
+				if cellData.EffectiveFormat != nil && cellData.EffectiveFormat.NumberFormat != nil {
+					return cellData.EffectiveFormat.NumberFormat.Pattern, nil
+				}
+			}
+			break
+		}
+	}
+
+	return "", nil // No format found
+}
+
+// FormatColumn applies number formatting to a column based on the data type
+func (c *Client) FormatColumn(ctx context.Context, spreadsheetID, sheetName string, columnIndex int, dataType, format string) error {
+	// Get sheet ID
+	spreadsheet, err := c.GetSpreadsheet(ctx, spreadsheetID)
+	if err != nil {
+		return fmt.Errorf("failed to get spreadsheet: %w", err)
+	}
+
+	var sheetID int64 = -1
+	var maxRows int64 = 1000 // Default max rows
+	for _, sheet := range spreadsheet.Sheets {
+		if sheet.Properties.Title == sheetName {
+			sheetID = sheet.Properties.SheetId
+			if sheet.Properties.GridProperties != nil && sheet.Properties.GridProperties.RowCount > 0 {
+				maxRows = sheet.Properties.GridProperties.RowCount
+			}
+			break
+		}
+	}
+
+	if sheetID == -1 {
+		return fmt.Errorf("sheet %s not found", sheetName)
+	}
+
+	// Determine the number format pattern based on type
+	var pattern string
+	switch dataType {
+	case "integer":
+		pattern = "0" // No decimal places
+	case "number":
+		pattern = "0.00" // Two decimal places
+	case "datetime":
+		if format == "default" || format == "" {
+			pattern = "yyyy-mm-dd hh:mm:ss"
+		} else if format == "date" {
+			pattern = "yyyy-mm-dd"
+		} else if format == "time" {
+			pattern = "hh:mm:ss"
+		} else {
+			pattern = "yyyy-mm-dd hh:mm:ss"
+		}
+	case "boolean":
+		// Boolean doesn't need number formatting, skip
+		return nil
+	case "string":
+		// String doesn't need number formatting, but we'll clear any existing format
+		pattern = "@" // Text format
+	default:
+		// No specific formatting needed
+		return nil
+	}
+
+	// Create format request for the entire column (excluding header)
+	req := &sheets.Request{
+		RepeatCell: &sheets.RepeatCellRequest{
+			Range: &sheets.GridRange{
+				SheetId:          sheetID,
+				StartRowIndex:    1, // Skip header row
+				EndRowIndex:      maxRows,
+				StartColumnIndex: int64(columnIndex),
+				EndColumnIndex:   int64(columnIndex + 1),
+			},
+			Cell: &sheets.CellData{
+				UserEnteredFormat: &sheets.CellFormat{
+					NumberFormat: &sheets.NumberFormat{
+						Type:    "NUMBER",
+						Pattern: pattern,
+					},
+				},
+			},
+			Fields: "userEnteredFormat.numberFormat",
+		},
+	}
+
+	batchUpdateReq := &sheets.BatchUpdateSpreadsheetRequest{
+		Requests: []*sheets.Request{req},
+	}
+
+	_, err = c.Service.Spreadsheets.BatchUpdate(spreadsheetID, batchUpdateReq).Context(ctx).Do()
+	if err != nil {
+		return fmt.Errorf("failed to format column: %w", err)
+	}
+
+	return nil
+}

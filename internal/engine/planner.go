@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/ucpr/ss-migrate/internal/schema"
 	"github.com/ucpr/ss-migrate/internal/sheet"
@@ -73,23 +74,42 @@ func (p *Planner) analyzeSheet(ctx context.Context, spreadsheetID, sheetName str
 			continue
 		}
 
-		// Get sample data from the column
-		column := sheet.ColumnToLetter(i)
-		columnData, err := p.sheetClient.GetColumnData(ctx, spreadsheetID, sheetName, column, headerRow+1)
-		if err != nil {
-			// If we can't get data, assume string type
-			fields = append(fields, FieldInfo{
-				Name: header,
-				Type: "string",
-			})
-			continue
+		// First, try to get the column format to infer type
+		columnFormat, _ := p.sheetClient.GetColumnFormat(ctx, spreadsheetID, sheetName, i)
+		inferredType := sheet.InferTypeFromFormat(columnFormat)
+		
+		// If we couldn't infer from format, fall back to data analysis
+		if inferredType == "" {
+			// Get sample data from the column
+			column := sheet.ColumnToLetter(i)
+			columnData, err := p.sheetClient.GetColumnData(ctx, spreadsheetID, sheetName, column, headerRow+1)
+			if err != nil {
+				// If we can't get data, assume string type
+				inferredType = "string"
+			} else {
+				// Infer type from data
+				inferredType = sheet.InferColumnType(columnData)
+			}
 		}
 
-		// Infer type from data
-		inferredType := sheet.InferColumnType(columnData)
+		// Determine format from type if it's datetime
+		var format string
+		if inferredType == "datetime" && columnFormat != "" {
+			// Try to determine if it's date-only or datetime
+			lowerPattern := strings.ToLower(columnFormat)
+			if !strings.Contains(lowerPattern, "hh") && !strings.Contains(lowerPattern, "ss") {
+				format = "date"
+			} else if strings.Contains(lowerPattern, "hh") && !strings.Contains(lowerPattern, "yyyy") {
+				format = "time"
+			} else {
+				format = "default"
+			}
+		}
+
 		fields = append(fields, FieldInfo{
-			Name: header,
-			Type: inferredType,
+			Name:   header,
+			Type:   inferredType,
+			Format: format,
 		})
 	}
 

@@ -208,15 +208,24 @@ func (a *Applier) addField(ctx context.Context, spreadsheetID, sheetName string,
 		return fmt.Errorf("failed to add field header: %w", err)
 	}
 
+	// Apply type formatting to the new column
+	err = a.sheetClient.FormatColumn(ctx, spreadsheetID, sheetName, insertColumnIndex, fieldInfo.Type, fieldInfo.Format)
+	if err != nil {
+		// If formatting fails, show warning but don't fail the entire operation
+		fmt.Printf("Warning: Could not apply formatting for new field %s: %v\n", fieldInfo.Name, err)
+	}
+
 	// If the field should be hidden, hide the column
 	if fieldInfo.Hidden {
 		err = a.sheetClient.HideColumn(ctx, spreadsheetID, sheetName, insertColumnIndex)
 		if err != nil {
 			return fmt.Errorf("failed to hide column: %w", err)
 		}
-		fmt.Printf("Added field '%s' to column %s (hidden)\n", fieldInfo.Name, columnLetter)
+		fmt.Printf("Added field '%s' to column %s (type: %s, hidden)\n", 
+			fieldInfo.Name, columnLetter, formatFieldType(fieldInfo.Type, fieldInfo.Format))
 	} else {
-		fmt.Printf("Added field '%s' to column %s\n", fieldInfo.Name, columnLetter)
+		fmt.Printf("Added field '%s' to column %s (type: %s)\n", 
+			fieldInfo.Name, columnLetter, formatFieldType(fieldInfo.Type, fieldInfo.Format))
 	}
 	
 	return nil
@@ -313,12 +322,24 @@ func (a *Applier) modifyField(ctx context.Context, spreadsheetID, sheetName stri
 		}
 	}
 
-	// Handle type changes (with warning)
+	// Handle type changes by applying number formatting
 	if fieldDiff.OldType != fieldDiff.NewType || fieldDiff.OldFormat != fieldDiff.NewFormat {
-		fmt.Printf("Warning: Field type modification for %s requires manual intervention (from %s to %s)\n",
-			fieldDiff.Name,
-			formatFieldType(fieldDiff.OldType, fieldDiff.OldFormat),
-			formatFieldType(fieldDiff.NewType, fieldDiff.NewFormat))
+		columnLetter := sheet.ColumnToLetter(columnIndex)
+		err = a.sheetClient.FormatColumn(ctx, spreadsheetID, sheetName, columnIndex, fieldDiff.NewType, fieldDiff.NewFormat)
+		if err != nil {
+			// If formatting fails, show warning but don't fail the entire operation
+			fmt.Printf("Warning: Could not apply formatting for field %s (column %s): %v\n", 
+				fieldDiff.Name, columnLetter, err)
+			fmt.Printf("  Type change: %s → %s\n",
+				formatFieldType(fieldDiff.OldType, fieldDiff.OldFormat),
+				formatFieldType(fieldDiff.NewType, fieldDiff.NewFormat))
+		} else {
+			fmt.Printf("Applied type formatting to column %s with field '%s': %s → %s\n",
+				columnLetter,
+				fieldDiff.Name,
+				formatFieldType(fieldDiff.OldType, fieldDiff.OldFormat),
+				formatFieldType(fieldDiff.NewType, fieldDiff.NewFormat))
+		}
 	}
 
 	return nil

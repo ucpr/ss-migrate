@@ -3,7 +3,9 @@ package sheet
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
+	"time"
 )
 
 // SheetInfo represents information about a sheet in a spreadsheet
@@ -114,6 +116,44 @@ func (c *Client) GetColumnData(ctx context.Context, spreadsheetID, sheetName str
 	return columnData, nil
 }
 
+// InferTypeFromFormat infers the data type from a Google Sheets number format pattern
+func InferTypeFromFormat(pattern string) string {
+	if pattern == "" {
+		return ""
+	}
+
+	// Check for common patterns
+	switch pattern {
+	case "0", "#,##0", "#,###", "0.#####", "#.#####":
+		return "integer"
+	case "0.00", "#,##0.00", "0.0", "#,##0.0":
+		return "number"
+	case "@":
+		return "string"
+	}
+
+	// Check for date/time patterns
+	lowerPattern := strings.ToLower(pattern)
+	if strings.Contains(lowerPattern, "yyyy") || strings.Contains(lowerPattern, "yy") ||
+		strings.Contains(lowerPattern, "mm") || strings.Contains(lowerPattern, "dd") ||
+		strings.Contains(lowerPattern, "hh") || strings.Contains(lowerPattern, "ss") {
+		return "datetime"
+	}
+
+	// Check for percentage
+	if strings.Contains(pattern, "%") {
+		return "number"
+	}
+
+	// Check for currency
+	if strings.Contains(pattern, "$") || strings.Contains(pattern, "¥") || 
+		strings.Contains(pattern, "€") || strings.Contains(pattern, "£") {
+		return "number"
+	}
+
+	return ""
+}
+
 // InferColumnType attempts to infer the type of data in a column
 func InferColumnType(data []any) string {
 	if len(data) == 0 {
@@ -123,6 +163,8 @@ func InferColumnType(data []any) string {
 	hasNumber := false
 	hasString := false
 	hasBoolean := false
+	hasDateTime := false
+	allDateTime := true
 
 	for _, val := range data {
 		if val == nil {
@@ -135,19 +177,30 @@ func InferColumnType(data []any) string {
 		// Check for boolean
 		if strings.ToLower(strVal) == "true" || strings.ToLower(strVal) == "false" {
 			hasBoolean = true
+			allDateTime = false
 			continue
+		}
+
+		// Check for datetime patterns
+		if isDateTime(strVal) {
+			hasDateTime = true
+		} else {
+			allDateTime = false
 		}
 
 		// Check for number
 		if isNumeric(strVal) {
 			hasNumber = true
-		} else if strVal != "" {
+		} else if strVal != "" && !isDateTime(strVal) {
 			hasString = true
 		}
 	}
 
 	// Determine the predominant type
-	if hasString {
+	// Prioritize datetime if all non-empty values are datetime
+	if hasDateTime && allDateTime {
+		return "datetime"
+	} else if hasString {
 		return "string"
 	} else if hasNumber {
 		if hasDecimal(data) {
@@ -199,6 +252,53 @@ func hasDecimal(data []any) bool {
 			}
 		}
 	}
+	return false
+}
+
+// isDateTime checks if a string represents a datetime value
+func isDateTime(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	// Common datetime patterns
+	dateTimePatterns := []string{
+		// ISO 8601 formats
+		`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`,  // 2006-01-02T15:04:05
+		`^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}`,  // 2006-01-02 15:04:05
+		`^\d{4}-\d{2}-\d{2}$`,                     // 2006-01-02
+		// Common US formats
+		`^\d{1,2}/\d{1,2}/\d{4}`,                  // 1/2/2006 or 01/02/2006
+		`^\d{1,2}-\d{1,2}-\d{4}`,                  // 1-2-2006 or 01-02-2006
+		// RFC3339
+		`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}`, // with timezone
+		`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z`,              // UTC
+	}
+
+	for _, pattern := range dateTimePatterns {
+		if matched, _ := regexp.MatchString(pattern, s); matched {
+			return true
+		}
+	}
+
+	// Try parsing with Go's time package
+	dateFormats := []string{
+		time.RFC3339,
+		time.RFC3339Nano,
+		"2006-01-02",
+		"2006-01-02 15:04:05",
+		"01/02/2006",
+		"1/2/2006",
+		"01-02-2006",
+		"2006/01/02",
+	}
+
+	for _, format := range dateFormats {
+		if _, err := time.Parse(format, s); err == nil {
+			return true
+		}
+	}
+
 	return false
 }
 
