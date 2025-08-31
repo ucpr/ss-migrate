@@ -1,10 +1,10 @@
 ## ss-migrate
 
-A CLI tool for managing Google Sheets schemas using YAML-based schema definitions.
+A CLI tool for managing Google SpreadSheets schemas using YAML-based schema definitions.
 
 ## Features
 
-- **Schema as Code**: Define your Google Sheets structure in YAML format based on Frictionless Table Schema
+- **Schema as Code**: Define your Google SpreadSheets structure in YAML format based on Frictionless Table Schema
 - **Plan & Apply**: Preview changes before applying them (similar to Terraform workflow)
 - **Type Management**: Automatic type detection and formatting for integer, number, datetime, and string types
 - **Column Operations**: Add, remove, reorder, and modify columns automatically
@@ -211,7 +211,7 @@ fields:
 
 ## Limitations
 
-- Currently supports Google Sheets only
+- Currently supports Google SpreadSheets only
 - Type changes apply formatting only (doesn't convert existing data)
 - Column protection (`x-protect`) is planned but not yet implemented
 - Formula preservation during column operations may require manual intervention
